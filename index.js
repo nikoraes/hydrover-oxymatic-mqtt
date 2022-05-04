@@ -1,5 +1,6 @@
 require('dotenv').config()
 const axios = require('axios')
+const mqtt = require('mqtt')
 const { parse } = require('node-html-parser')
 
 const login = async () => {
@@ -46,7 +47,7 @@ const getDeviceStatusPage = async (cookie) => {
   return resp.data
 }
 
-const processLoop = async () => {
+const processLoop = async (callback) => {
   try {
     const cookie = await login()
     console.log(cookie)
@@ -56,6 +57,14 @@ const processLoop = async () => {
     const [ionCurr, ionVolt] = deviceStatusPage.querySelectorAll('.ion .big-number').map(x => x.text)
     const pH = deviceStatusPage.querySelector('.control-ph .big-number').text
     console.log(temperature, oxyCurr, oxyVolt, ionCurr, ionVolt, pH)
+    callback({
+      temperature,
+      oxyCurr,
+      oxyVolt,
+      ionCurr,
+      ionVolt,
+      pH
+    })
   } catch (err) {
     console.error(err)
   }
@@ -64,7 +73,23 @@ const processLoop = async () => {
 }
 
 const main = async () => {
-  await processLoop()
+  const mqttClient = mqtt.connect({
+    host: process.env.MQTT_HOST,
+    port: process.env.MQTT_PORT,
+    username: process.env.MQTT_USERNAME,
+    password: process.env.MQTT_PASSWORD,
+    reconnectPeriod: 1000
+  })
+  mqttClient.on('connect', () => {
+    processLoop(data => {
+      mqttClient.publish(process.env.MQTT_PUBLISH_TOPIC, data, { qos: 0, retain: false }, (error) => {
+        if (error) {
+          console.error(error)
+        }
+      })
+    })
+
+  })
 }
 
 main().catch(console.error)

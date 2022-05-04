@@ -1,6 +1,6 @@
 require('dotenv').config()
 const axios = require('axios')
-const mqtt = require('mqtt')
+const HomieDevice = require('homie-device')
 const { parse } = require('node-html-parser')
 
 const login = async () => {
@@ -72,24 +72,41 @@ const processLoop = async (callback) => {
   process.nextTick(processLoop)
 }
 
-const main = async () => {
-  const mqttClient = mqtt.connect({
+
+const homieConfig = {
+  name: process.env.HOMIE_NAME,
+  device_id: process.env.HOMIE_DEVICE_ID,
+  mqtt: {
     host: process.env.MQTT_HOST,
     port: process.env.MQTT_PORT,
+    auth: true,
     username: process.env.MQTT_USERNAME,
     password: process.env.MQTT_PASSWORD,
-    reconnectPeriod: 1000
-  })
-  mqttClient.on('connect', () => {
-    processLoop(data => {
-      mqttClient.publish(process.env.MQTT_PUBLISH_TOPIC, data, { qos: 0, retain: false }, (error) => {
-        if (error) {
-          console.error(error)
-        }
-      })
-    })
+    base_topic: `${process.env.MQTT_BASE_TOPIC}/`
+  }
+}
+const device = new HomieDevice(homieConfig)
 
+const publishCallback = (node, data) => {
+  for (const [key, value] of Object.entries(data)) {
+    node.setProperty(key).send(value)
+  }
+}
+
+const main = async () => {
+  const node = device.node(process.env.HOMIE_NODE, process.env.HOMIE_NODE, 'oxymatic-controller')
+  node.advertise('temperature').setUnit('°C').setDatatype('string')
+  node.advertise('oxyCurr').setDatatype('string')
+  node.advertise('oxyVolt').setDatatype('string')
+  node.advertise('ionCurr').setDatatype('string')
+  node.advertise('ionVolt').setDatatype('string')
+  node.advertise('pH').setDatatype('string')
+
+  device.on('connect', () => {
+    processLoop(data => { publishCallback(node, data) })
   })
+  device.setup()
+
 }
 
 main().catch(console.error)

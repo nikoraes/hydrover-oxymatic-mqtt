@@ -5,7 +5,6 @@ const { parse } = require('node-html-parser')
 
 const login = async () => {
   try {
-    console.log(process.env.LOGIN_REQUEST)
     await axios({
       method: 'POST',
       url: 'https://oxymaticapp.hydrover.eu/home/login',
@@ -16,7 +15,7 @@ const login = async () => {
       maxRedirects: 0
     })
     // This should fail because it's redirected, if it doesn't fail, return undefined
-    return
+    throw new Error('Login failed')
   } catch (err) {
     const cookie = err.response.headers['set-cookie'][0].split(';')[0]
 
@@ -33,6 +32,7 @@ const login = async () => {
     // TODO: scrape device ids
 
     return `${cookie}; ${requestVerificationTokenCookie}`
+
   }
 }
 
@@ -50,26 +50,28 @@ const getDeviceStatusPage = async (cookie) => {
 const processLoop = async (callback) => {
   try {
     const cookie = await login()
-    console.log(cookie)
-    const deviceStatusPage = parse(await getDeviceStatusPage(cookie))
+    const deviceStatusRaw = await getDeviceStatusPage(cookie)
+    //console.log(deviceStatusRaw)
+    const deviceStatusPage = parse(deviceStatusRaw)
     const temperature = deviceStatusPage.querySelector('.control-temp .big-number').text
     const [oxyCurr, oxyVolt] = deviceStatusPage.querySelectorAll('.oxy .big-number').map(x => x.text)
     const [ionCurr, ionVolt] = deviceStatusPage.querySelectorAll('.ion .big-number').map(x => x.text)
     const pH = deviceStatusPage.querySelector('.control-ph .big-number').text
-    console.log(temperature, oxyCurr, oxyVolt, ionCurr, ionVolt, pH)
+    const redox = deviceStatusPage.querySelector('.control-redox .big-number').text
     callback({
       temperature,
       oxyCurr,
       oxyVolt,
       ionCurr,
       ionVolt,
-      pH
+      pH,
+      redox
     })
   } catch (err) {
     console.error(err)
   }
-  await new Promise(res => setTimeout(res, 60000))
-  process.nextTick(processLoop)
+  await new Promise(res => setTimeout(res, 5000))
+  process.nextTick(() => processLoop(callback))
 }
 
 
@@ -89,18 +91,19 @@ const device = new HomieDevice(homieConfig)
 
 const publishCallback = (node, data) => {
   for (const [key, value] of Object.entries(data)) {
-    node.setProperty(key).send(value)
+    node.setProperty(key).send(value.replace(',', '.'))
   }
 }
 
 const main = async () => {
   const node = device.node(process.env.HOMIE_NODE, process.env.HOMIE_NODE, 'oxymatic-controller')
-  node.advertise('temperature').setUnit('°C').setDatatype('string')
-  node.advertise('oxyCurr').setDatatype('string')
-  node.advertise('oxyVolt').setDatatype('string')
-  node.advertise('ionCurr').setDatatype('string')
-  node.advertise('ionVolt').setDatatype('string')
-  node.advertise('pH').setDatatype('string')
+  node.advertise('temperature').setName('Temperature').setUnit('°C').setDatatype('float')
+  node.advertise('oxyCurr').setName('OXY Current').setDatatype('float')
+  node.advertise('oxyVolt').setName('OXY Voltage').setDatatype('float')
+  node.advertise('ionCurr').setName('ION Current').setDatatype('float')
+  node.advertise('ionVolt').setName('ION Voltage').setDatatype('float')
+  node.advertise('pH').setDatatype('float')
+  node.advertise('redox').setName('Redox').setDatatype('float')
 
   device.on('connect', () => {
     processLoop(data => { publishCallback(node, data) })

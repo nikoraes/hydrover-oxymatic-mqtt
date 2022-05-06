@@ -70,7 +70,7 @@ const processLoop = async (callback) => {
   } catch (err) {
     console.error(err)
   }
-  await new Promise(res => setTimeout(res, 5000))
+  await new Promise(res => setTimeout(res, 300000))
   process.nextTick(() => processLoop(callback))
 }
 

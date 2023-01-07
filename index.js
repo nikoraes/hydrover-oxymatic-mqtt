@@ -83,8 +83,10 @@ const processLoop = async (callback) => {
     const [ionCurr, ionVolt] = deviceStatusPage.querySelectorAll('.ion .big-number').map(x => x.text)
     const pH = deviceStatusPage.querySelector('.control-ph .big-number').text
     const redox = deviceStatusPage.querySelector('.control-redox .big-number').text
-    const mode = deviceStatusPage.querySelectorAll('.statusresume p').find(x => x.text.includes('MODE'))?.text.replace('MODE: ', '').toLowerCase().includes('auto') ? 'auto' : 'off'
-    const prog = deviceStatusPage.querySelectorAll('.statusresume p').find(x => x.text.includes('PROG'))?.text.replace('PROG: ', '').trim()
+    const mode = deviceStatusPage.querySelectorAll('.statusresume p').find(x => x.text.includes('MODE')) &&
+      deviceStatusPage.querySelectorAll('.statusresume p').find(x => x.text.includes('MODE')).text.replace('MODE: ', '').toLowerCase().includes('auto') ? 'auto' : 'off'
+    const prog = deviceStatusPage.querySelectorAll('.statusresume p').find(x => x.text.includes('PROG')) &&
+      deviceStatusPage.querySelectorAll('.statusresume p').find(x => x.text.includes('PROG')).text.replace('PROG: ', '').trim()
 
     callback({
       temperature,

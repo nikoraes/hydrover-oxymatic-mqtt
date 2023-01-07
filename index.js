@@ -77,7 +77,6 @@ const processLoop = async (callback) => {
   try {
     const cookie = await login()
     const deviceStatusRaw = await getDeviceStatusPage(cookie)
-    console.log(deviceStatusRaw)
     const deviceStatusPage = parse(deviceStatusRaw)
     const temperature = deviceStatusPage.querySelector('.control-temp .big-number').text
     const [oxyCurr, oxyVolt] = deviceStatusPage.querySelectorAll('.oxy .big-number').map(x => x.text)
@@ -106,7 +105,6 @@ const processLoop = async (callback) => {
 }
 
 const publishCallback = (node, data) => {
-  console.log(data)
   for (const [key, value] of Object.entries(data)) {
     if (!value) continue
     node.setProperty(key).send(value.replace(',', '.'))

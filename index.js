@@ -124,6 +124,7 @@ const main = async () => {
   node.advertise('redox').setName('Redox').setDatatype('float')
   node.advertise('mode').setName('Mode').setDatatype('enum').setFormat('auto,off').settable(async (range, value) => {
     const cookie = await login()
+    await setDeviceMode(value, cookie)
     node.setProperty('mode').send(value)
   })
   node.advertise('prog').setName('Program').setDatatype('string')

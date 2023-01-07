@@ -3,6 +3,20 @@ const axios = require('axios')
 const HomieDevice = require('homie-device')
 const { parse } = require('node-html-parser')
 
+const homieConfig = {
+  name: process.env.HOMIE_NAME,
+  device_id: process.env.HOMIE_DEVICE_ID,
+  mqtt: {
+    host: process.env.MQTT_HOST,
+    port: process.env.MQTT_PORT,
+    auth: true,
+    username: process.env.MQTT_USERNAME,
+    password: process.env.MQTT_PASSWORD,
+    base_topic: `${process.env.MQTT_BASE_TOPIC}/`
+  }
+}
+const device = new HomieDevice(homieConfig)
+
 const login = async () => {
   try {
     await axios({
@@ -17,7 +31,8 @@ const login = async () => {
     // This should fail because it's redirected, if it doesn't fail, return undefined
     throw new Error('Login failed')
   } catch (err) {
-    const cookie = err.response.headers['set-cookie'][0].split(';')[0]
+    const cookie = err.response && err.response.headers['set-cookie'][0].split(';')[0]
+    if (!cookie) console.error('Login failed', err)
 
     const resp = await axios({
       method: 'GET',
@@ -47,17 +62,31 @@ const getDeviceStatusPage = async (cookie) => {
   return resp.data
 }
 
+const setDeviceMode = async (mode, cookie) => {
+  const resp = await axios({
+    method: 'GET',
+    url: `https://oxymaticapp.hydrover.eu/devices/${mode}?id=2723`,
+    headers: {
+      cookie
+    }
+  })
+  return resp.data
+}
+
 const processLoop = async (callback) => {
   try {
     const cookie = await login()
     const deviceStatusRaw = await getDeviceStatusPage(cookie)
-    //console.log(deviceStatusRaw)
+    console.log(deviceStatusRaw)
     const deviceStatusPage = parse(deviceStatusRaw)
     const temperature = deviceStatusPage.querySelector('.control-temp .big-number').text
     const [oxyCurr, oxyVolt] = deviceStatusPage.querySelectorAll('.oxy .big-number').map(x => x.text)
     const [ionCurr, ionVolt] = deviceStatusPage.querySelectorAll('.ion .big-number').map(x => x.text)
     const pH = deviceStatusPage.querySelector('.control-ph .big-number').text
     const redox = deviceStatusPage.querySelector('.control-redox .big-number').text
+    const mode = deviceStatusPage.querySelectorAll('.statusresume p').find(x => x.text.includes('MODE'))?.text.replace('MODE: ', '').toLowerCase().includes('auto') ? 'auto' : 'off'
+    const prog = deviceStatusPage.querySelectorAll('.statusresume p').find(x => x.text.includes('PROG'))?.text.replace('PROG: ', '').trim()
+
     callback({
       temperature,
       oxyCurr,
@@ -65,7 +94,9 @@ const processLoop = async (callback) => {
       ionCurr,
       ionVolt,
       pH,
-      redox
+      redox,
+      mode,
+      prog
     })
   } catch (err) {
     console.error(err)
@@ -74,23 +105,10 @@ const processLoop = async (callback) => {
   process.nextTick(() => processLoop(callback))
 }
 
-
-const homieConfig = {
-  name: process.env.HOMIE_NAME,
-  device_id: process.env.HOMIE_DEVICE_ID,
-  mqtt: {
-    host: process.env.MQTT_HOST,
-    port: process.env.MQTT_PORT,
-    auth: true,
-    username: process.env.MQTT_USERNAME,
-    password: process.env.MQTT_PASSWORD,
-    base_topic: `${process.env.MQTT_BASE_TOPIC}/`
-  }
-}
-const device = new HomieDevice(homieConfig)
-
 const publishCallback = (node, data) => {
+  console.log(data)
   for (const [key, value] of Object.entries(data)) {
+    if (!value) continue
     node.setProperty(key).send(value.replace(',', '.'))
   }
 }
@@ -104,12 +122,18 @@ const main = async () => {
   node.advertise('ionVolt').setName('ION Voltage').setDatatype('float')
   node.advertise('pH').setDatatype('float')
   node.advertise('redox').setName('Redox').setDatatype('float')
+  node.advertise('mode').setName('Mode').setDatatype('enum').setFormat('auto,off').settable(async (range, value) => {
+    const cookie = await login()
+    await setDeviceMode(value, cookie)
+    node.setProperty('mode').setRetained().send(value);
+  })
+  node.advertise('prog').setName('Program').setDatatype('string')
 
   device.on('connect', () => {
     processLoop(data => { publishCallback(node, data) })
   })
-  device.setup()
 
+  device.setup()
 }
 
 main().catch(console.error)

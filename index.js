@@ -124,15 +124,14 @@ const main = async () => {
   node.advertise('pH').setDatatype('float')
   node.advertise('redox').setName('Redox').setDatatype('float')
   node.advertise('mode').setName('Mode').setDatatype('enum').setFormat('auto,off').settable(async (range, value) => {
-    console.log(now + ': Setting mode to ' + value)
+    console.log(new Date().toISOString + ': Setting mode to ' + value)
     const cookie = await login()
     await setDeviceMode(value, cookie)
     const deviceStatusRaw = await getDeviceStatusPage(cookie)
     const deviceStatusPage = parse(deviceStatusRaw)
     const mode = deviceStatusPage.querySelectorAll('.statusresume p').find(x => x.text.includes('MODE')) &&
       deviceStatusPage.querySelectorAll('.statusresume p').find(x => x.text.includes('MODE')).text.replace('MODE: ', '').toLowerCase().includes('auto') ? 'auto' : 'off'
-    const now = new Date()
-    console.log(now + ': New mode ' + mode)
+    console.log(new Date().toISOString + ': New mode ' + mode)
     node.setProperty('mode').send(mode)
   })
   node.advertise('prog').setName('Program').setDatatype('string')

@@ -107,7 +107,7 @@ const processLoop = async (callback) => {
 }
 
 const publishCallback = (node, data) => {
-  console.log(data)
+  // console.log(data)
   for (const [key, value] of Object.entries(data)) {
     if (!value) continue
     node.setProperty(key).send(value.replace(',', '.'))
@@ -124,14 +124,15 @@ const main = async () => {
   node.advertise('pH').setDatatype('float')
   node.advertise('redox').setName('Redox').setDatatype('float')
   node.advertise('mode').setName('Mode').setDatatype('enum').setFormat('auto,off').settable(async (range, value) => {
+    console.log(now + ': Setting mode to ' + value)
     const cookie = await login()
     await setDeviceMode(value, cookie)
     const deviceStatusRaw = await getDeviceStatusPage(cookie)
     const deviceStatusPage = parse(deviceStatusRaw)
     const mode = deviceStatusPage.querySelectorAll('.statusresume p').find(x => x.text.includes('MODE')) &&
       deviceStatusPage.querySelectorAll('.statusresume p').find(x => x.text.includes('MODE')).text.replace('MODE: ', '').toLowerCase().includes('auto') ? 'auto' : 'off'
-    console.log('Setting mode to ' + value)
-    console.log('New mode ' + mode)
+    const now = new Date()
+    console.log(now + ': New mode ' + mode)
     node.setProperty('mode').send(mode)
   })
   node.advertise('prog').setName('Program').setDatatype('string')

@@ -51,7 +51,7 @@ client.on('close', () => {
 
 const deviceConfig: DeviceConfig = {
   identifiers: [process.env.DEVICE_ID!],
-  name: process.env.HOMIE_NAME!,
+  name: process.env.DEVICE_NAME!,
   manufacturer: 'Hydrover',
   model: 'Oxymatic Controller',
 };

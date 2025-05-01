@@ -25,8 +25,7 @@ const mqttOptions: IClientOptions = {
   port: Number(process.env.MQTT_PORT!) || 8883, // Default to 8883 for SSL
   username: process.env.MQTT_USERNAME!,
   password: process.env.MQTT_PASSWORD!,
-  protocol: (Number(process.env.MQTT_PORT!) === 8883 ? 'mqtts' : (process.env.MQTT_PROTOCOL || 'mqtt')) as MqttProtocol, 
-  rejectUnauthorized: true, // Enforce certificate validation
+  protocol: (Number(process.env.MQTT_PORT!) === 8883 ? 'mqtts' : (process.env.MQTT_PROTOCOL || 'mqtt')) as MqttProtocol
 };
 
 const client: MqttClient = mqtt.connect(mqttOptions);

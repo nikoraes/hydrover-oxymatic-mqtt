@@ -2,10 +2,10 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-RUN npm install --production
+COPY pnpm-lock.yaml ./
+RUN npm install -g pnpm && pnpm fetch
 
 COPY . .
-RUN npm install -g typescript && tsc
+RUN pnpm install --offline && pnpm build
 
 CMD ["node", "dist/index.js"]

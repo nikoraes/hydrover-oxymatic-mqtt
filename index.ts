@@ -1,4 +1,4 @@
-import mqtt, { MqttClient } from 'mqtt';
+import mqtt, { MqttClient, IClientOptions, MqttProtocol } from 'mqtt';
 import axios from 'axios';
 import { parse } from 'node-html-parser';
 
@@ -20,15 +20,34 @@ interface SensorConfig {
   command_topic?: string;
 }
 
-const client: MqttClient = mqtt.connect({
+const mqttOptions: IClientOptions = {
   host: process.env.MQTT_HOST!,
-  port: Number(process.env.MQTT_PORT!),
+  port: Number(process.env.MQTT_PORT!) || 8883, // Default to 8883 for SSL
   username: process.env.MQTT_USERNAME!,
   password: process.env.MQTT_PASSWORD!,
-});
+  protocol: (Number(process.env.MQTT_PORT!) === 8883 ? 'mqtts' : (process.env.MQTT_PROTOCOL || 'mqtt')) as MqttProtocol, 
+  rejectUnauthorized: true, // Enforce certificate validation
+};
 
+const client: MqttClient = mqtt.connect(mqttOptions);
+
+// Enhanced error handling and reconnection logic
 client.on('error', (err) => {
   console.error('MQTT connection error:', err);
+  console.log('Attempting to reconnect...');
+  client.reconnect();
+});
+
+client.on('offline', () => {
+  console.warn('MQTT client is offline.');
+});
+
+client.on('reconnect', () => {
+  console.log('Reconnecting to MQTT broker...');
+});
+
+client.on('close', () => {
+  console.warn('MQTT connection closed.');
 });
 
 const deviceConfig: DeviceConfig = {

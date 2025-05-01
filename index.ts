@@ -106,13 +106,16 @@ const publishDiscoveryConfig = (sensor: string, name: string, unit?: string, dev
   client.publish(topic, JSON.stringify(payload), { retain: true });
 };
 
+// Updated publishState to handle numeric payloads with comma-to-dot conversion
 const publishState = (sensor: string, value: string): void => {
+  // Convert comma to dot for numeric values
+  const formattedValue = value.replace(',', '.');
   const topic = `homeassistant/sensor/${process.env.DEVICE_ID}/${sensor}/state`;
-  client.publish(topic, value, { retain: true }, (err) => {
+  client.publish(topic, formattedValue, { retain: true }, (err) => {
     if (err) {
       console.error(`Failed to publish state for ${sensor}:`, err);
     } else {
-      console.log(`Published state for ${sensor}: ${value}`);
+      console.log(`Published state for ${sensor}: ${formattedValue}`);
     }
   });
 };

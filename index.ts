@@ -128,6 +128,14 @@ const publishAlert = (message: string): void => {
   });
 };
 
+// Updated handleCommand to map mode values to select options
+const mapModeToSelectValue = (mode: string): string => {
+  if (mode.includes('automatic')) return 'auto';
+  if (mode.includes('manual')) return 'man';
+  if (mode.includes('off')) return 'off';
+  return 'unknown';
+};
+
 const processLoop = async (): Promise<void> => {
   const interval = Number(process.env.PROCESS_LOOP_INTERVAL) || 300000; // Default to 5 minutes
 
@@ -139,8 +147,9 @@ const processLoop = async (): Promise<void> => {
     const temperature = deviceStatusPage.querySelector('.control-temp .big-number')?.text || '';
     const pH = deviceStatusPage.querySelector('.control-ph .big-number')?.text || '';
     const redox = deviceStatusPage.querySelector('.control-redox .big-number')?.text || '';
-    const mode =
+    const rawMode =
       deviceStatusPage.querySelectorAll('.statusresume p').find((x) => x.text.includes('MODE'))?.text.replace('MODE: ', '').toLowerCase() || '';
+    const mode = mapModeToSelectValue(rawMode);
     const prog =
       deviceStatusPage.querySelectorAll('.statusresume p').find((x) => x.text.includes('PROG'))?.text.replace('PROG: ', '').trim() || '';
 

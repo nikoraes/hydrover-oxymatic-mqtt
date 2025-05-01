@@ -27,6 +27,10 @@ const client: MqttClient = mqtt.connect({
   password: process.env.MQTT_PASSWORD!,
 });
 
+client.on('error', (err) => {
+  console.error('MQTT connection error:', err);
+});
+
 const deviceConfig: DeviceConfig = {
   identifiers: [process.env.DEVICE_ID!],
   name: process.env.HOMIE_NAME!,
@@ -86,15 +90,29 @@ const publishDiscoveryConfig = (sensor: string, name: string, unit?: string, dev
 
 const publishState = (sensor: string, value: string): void => {
   const topic = `homeassistant/sensor/${process.env.DEVICE_ID}/${sensor}/state`;
-  client.publish(topic, value, { retain: true });
+  client.publish(topic, value, { retain: true }, (err) => {
+    if (err) {
+      console.error(`Failed to publish state for ${sensor}:`, err);
+    } else {
+      console.log(`Published state for ${sensor}: ${value}`);
+    }
+  });
 };
 
 const publishAlert = (message: string): void => {
   const topic = `homeassistant/text/${process.env.DEVICE_ID}/alert/state`;
-  client.publish(topic, message, { retain: true });
+  client.publish(topic, message, { retain: true }, (err) => {
+    if (err) {
+      console.error('Failed to publish alert:', err);
+    } else {
+      console.log(`Published alert: ${message}`);
+    }
+  });
 };
 
 const processLoop = async (): Promise<void> => {
+  const interval = Number(process.env.PROCESS_LOOP_INTERVAL) || 300000; // Default to 5 minutes
+
   try {
     const cookie = await login();
     const deviceStatusRaw = await getDeviceStatusPage(cookie);
@@ -117,10 +135,11 @@ const processLoop = async (): Promise<void> => {
     console.error('Error in processLoop:', err);
     publishAlert(`Error: ${(err as Error).message}`);
   }
-  setTimeout(processLoop, 300000);
+  setTimeout(processLoop, interval);
 };
 
 const handleCommand = async (command: string): Promise<void> => {
+  console.log(`Handling command: ${command}`);
   try {
     const cookie = await login();
     await setDeviceMode(command, cookie);
@@ -143,6 +162,7 @@ const main = (): void => {
     const commandTopic = `homeassistant/select/${process.env.DEVICE_ID}/mode/set`;
     client.subscribe(commandTopic);
     client.on('message', (topic, message) => {
+      console.log(`Received message on topic ${topic}: ${message.toString()}`);
       if (topic === commandTopic) {
         handleCommand(message.toString());
       }

@@ -1,6 +1,15 @@
-import mqtt, { MqttClient, IClientOptions, MqttProtocol } from 'mqtt';
-import axios from 'axios';
-import { parse } from 'node-html-parser';
+import mqtt, { MqttClient, IClientOptions, MqttProtocol } from "mqtt";
+import axios from "axios";
+import https from "node:https";
+import { parse } from "node-html-parser";
+
+const baseUrl = process.env.OXYMATIC_HOST || "https://oxymaticapp.hydrover.eu";
+const axiosInstance = axios.create({
+  httpsAgent:
+    process.env.ALLOW_INSECURE === "true"
+      ? new https.Agent({ rejectUnauthorized: false })
+      : undefined,
+});
 
 interface DeviceConfig {
   identifiers: string[];
@@ -25,72 +34,89 @@ const mqttOptions: IClientOptions = {
   port: Number(process.env.MQTT_PORT!) || 8883, // Default to 8883 for SSL
   username: process.env.MQTT_USERNAME!,
   password: process.env.MQTT_PASSWORD!,
-  protocol: (Number(process.env.MQTT_PORT!) === 8883 ? 'mqtts' : (process.env.MQTT_PROTOCOL || 'mqtt')) as MqttProtocol
+  protocol: (Number(process.env.MQTT_PORT!) === 8883
+    ? "mqtts"
+    : process.env.MQTT_PROTOCOL || "mqtt") as MqttProtocol,
 };
 
 const client: MqttClient = mqtt.connect(mqttOptions);
 
 // Enhanced error handling and reconnection logic
-client.on('error', (err) => {
-  console.error('MQTT connection error:', err);
-  console.log('Attempting to reconnect...');
+client.on("error", (err) => {
+  console.error("MQTT connection error:", err);
+  console.log("Attempting to reconnect...");
   client.reconnect();
 });
 
-client.on('offline', () => {
-  console.warn('MQTT client is offline.');
+client.on("offline", () => {
+  console.warn("MQTT client is offline.");
 });
 
-client.on('reconnect', () => {
-  console.log('Reconnecting to MQTT broker...');
+client.on("reconnect", () => {
+  console.log("Reconnecting to MQTT broker...");
 });
 
-client.on('close', () => {
-  console.warn('MQTT connection closed.');
+client.on("close", () => {
+  console.warn("MQTT connection closed.");
 });
 
 const deviceConfig: DeviceConfig = {
   identifiers: [process.env.DEVICE_ID!],
   name: process.env.DEVICE_NAME!,
-  manufacturer: 'Hydrover',
-  model: 'Oxymatic Controller',
+  manufacturer: "Hydrover",
+  model: "Oxymatic Controller",
 };
 
 const login = async (): Promise<string> => {
   try {
-    await axios.post('https://oxymaticapp.hydrover.eu/home/login', process.env.LOGIN_REQUEST, {
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      maxRedirects: 0,
-    });
-    throw new Error('Login failed');
+    await axiosInstance.post(
+      `${baseUrl}/home/login`,
+      process.env.LOGIN_REQUEST,
+      {
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        maxRedirects: 0,
+      },
+    );
+    throw new Error("Login failed");
   } catch (err: any) {
-    const cookie = err.response?.headers['set-cookie'][0].split(';')[0];
-    if (!cookie) throw new Error('Login failed');
+    const cookie = err.response?.headers["set-cookie"][0].split(";")[0];
+    if (!cookie) throw new Error("Login failed");
 
-    const resp = await axios.get('https://oxymaticapp.hydrover.eu/Users/Account', {
+    const resp = await axiosInstance.get(`${baseUrl}/Users/Account`, {
       headers: { cookie },
     });
 
-    const requestVerificationTokenCookie = `${ resp.headers['set-cookie']?.[0] }`.split(';')?.[0]
+    const requestVerificationTokenCookie =
+      `${resp.headers["set-cookie"]?.[0]}`.split(";")?.[0];
     return `${cookie}; ${requestVerificationTokenCookie}`;
   }
 };
 
 const getDeviceStatusPage = async (cookie: string): Promise<string> => {
-  const resp = await axios.get('https://oxymaticapp.hydrover.eu/devices/DeviceStatus?id=2723', {
-    headers: { cookie },
-  });
+  const resp = await axiosInstance.get(
+    `${baseUrl}/devices/DeviceStatus?id=2723`,
+    {
+      headers: { cookie },
+    },
+  );
   return resp.data;
 };
 
 const setDeviceMode = async (mode: string, cookie: string): Promise<void> => {
-  await axios.get(`https://oxymaticapp.hydrover.eu/devices/${mode}?id=2723`, {
+  await axiosInstance.get(`${baseUrl}/devices/${mode}?id=2723`, {
     headers: { cookie },
   });
 };
 
 // Updated mode to use MQTT Select with predefined options
-const publishDiscoveryConfig = (sensor: string, name: string, unit?: string, deviceClass?: string, component: string = 'sensor', options?: string[]): void => {
+const publishDiscoveryConfig = (
+  sensor: string,
+  name: string,
+  unit?: string,
+  deviceClass?: string,
+  component: string = "sensor",
+  options?: string[],
+): void => {
   const topic = `homeassistant/${component}/${process.env.DEVICE_ID}/${sensor}/config`;
   const payload: SensorConfig = {
     name,
@@ -99,8 +125,11 @@ const publishDiscoveryConfig = (sensor: string, name: string, unit?: string, dev
     device: deviceConfig,
     unit_of_measurement: unit,
     device_class: deviceClass,
-    options: component === 'select' ? options : undefined,
-    command_topic: component === 'select' ? `homeassistant/${component}/${process.env.DEVICE_ID}/${sensor}/set` : undefined,
+    options: component === "select" ? options : undefined,
+    command_topic:
+      component === "select"
+        ? `homeassistant/${component}/${process.env.DEVICE_ID}/${sensor}/set`
+        : undefined,
   };
 
   client.publish(topic, JSON.stringify(payload), { retain: true });
@@ -108,13 +137,13 @@ const publishDiscoveryConfig = (sensor: string, name: string, unit?: string, dev
 
 // Updated publishState to handle mode separately and send it to the correct topic
 const publishState = (sensor: string, value: string): void => {
-  const isMode = sensor === 'mode';
+  const isMode = sensor === "mode";
   const topic = isMode
     ? `homeassistant/select/${process.env.DEVICE_ID}/${sensor}/state`
     : `homeassistant/sensor/${process.env.DEVICE_ID}/${sensor}/state`;
 
   // Convert comma to dot for numeric values
-  const formattedValue = value.replace(',', '.');
+  const formattedValue = value.replace(",", ".");
   client.publish(topic, formattedValue, { retain: true }, (err) => {
     if (err) {
       console.error(`Failed to publish state for ${sensor}:`, err);
@@ -128,7 +157,7 @@ const publishAlert = (message: string): void => {
   const topic = `homeassistant/text/${process.env.DEVICE_ID}/alert/state`;
   client.publish(topic, message, { retain: true }, (err) => {
     if (err) {
-      console.error('Failed to publish alert:', err);
+      console.error("Failed to publish alert:", err);
     } else {
       console.log(`Published alert: ${message}`);
     }
@@ -137,10 +166,10 @@ const publishAlert = (message: string): void => {
 
 // Updated handleCommand to map mode values to select options
 const mapModeToSelectValue = (mode: string): string => {
-  if (mode.includes('automatic')) return 'auto';
-  if (mode.includes('manual')) return 'man';
-  if (mode.includes('off')) return 'off';
-  return 'unknown';
+  if (mode.includes("automatic")) return "auto";
+  if (mode.includes("manual")) return "man";
+  if (mode.includes("off")) return "off";
+  return "unknown";
 };
 
 const processLoop = async (): Promise<void> => {
@@ -151,22 +180,33 @@ const processLoop = async (): Promise<void> => {
     const deviceStatusRaw = await getDeviceStatusPage(cookie);
     const deviceStatusPage = parse(deviceStatusRaw);
 
-    const temperature = deviceStatusPage.querySelector('.control-temp .big-number')?.text || '';
-    const pH = deviceStatusPage.querySelector('.control-ph .big-number')?.text || '';
-    const redox = deviceStatusPage.querySelector('.control-redox .big-number')?.text || '';
+    const temperature =
+      deviceStatusPage.querySelector(".control-temp .big-number")?.text || "";
+    const pH =
+      deviceStatusPage.querySelector(".control-ph .big-number")?.text || "";
+    const redox =
+      deviceStatusPage.querySelector(".control-redox .big-number")?.text || "";
     const rawMode =
-      deviceStatusPage.querySelectorAll('.statusresume p').find((x) => x.text.includes('MODE'))?.text.replace('MODE: ', '').toLowerCase() || '';
+      deviceStatusPage
+        .querySelectorAll(".statusresume p")
+        .find((x) => x.text.includes("MODE"))
+        ?.text.replace("MODE: ", "")
+        .toLowerCase() || "";
     const mode = mapModeToSelectValue(rawMode);
     const prog =
-      deviceStatusPage.querySelectorAll('.statusresume p').find((x) => x.text.includes('PROG'))?.text.replace('PROG: ', '').trim() || '';
+      deviceStatusPage
+        .querySelectorAll(".statusresume p")
+        .find((x) => x.text.includes("PROG"))
+        ?.text.replace("PROG: ", "")
+        .trim() || "";
 
-    publishState('temperature', temperature);
-    publishState('pH', pH);
-    publishState('redox', redox);
-    publishState('mode', mode);
-    publishState('prog', prog);
+    publishState("temperature", temperature);
+    publishState("pH", pH);
+    publishState("redox", redox);
+    publishState("mode", mode);
+    publishState("prog", prog);
   } catch (err) {
-    console.error('Error in processLoop:', err);
+    console.error("Error in processLoop:", err);
     publishAlert(`Error: ${(err as Error).message}`);
   }
   setTimeout(processLoop, interval);
@@ -179,23 +219,27 @@ const handleCommand = async (command: string): Promise<void> => {
     await setDeviceMode(command, cookie);
     console.log(`Device mode set to: ${command}`);
   } catch (err) {
-    console.error('Error handling command:', err);
+    console.error("Error handling command:", err);
   }
 };
 
 const main = (): void => {
-  client.on('connect', () => {
-    console.log('Connected to MQTT broker');
+  client.on("connect", () => {
+    console.log("Connected to MQTT broker");
 
-    publishDiscoveryConfig('temperature', 'Temperature', '°C', 'temperature');
-    publishDiscoveryConfig('pH', 'pH');
-    publishDiscoveryConfig('redox', 'Redox', 'mV');
-    publishDiscoveryConfig('mode', 'Mode', undefined, undefined, 'select', ['auto', 'man', 'off']);
-    publishDiscoveryConfig('prog', 'Program');
+    publishDiscoveryConfig("temperature", "Temperature", "°C", "temperature");
+    publishDiscoveryConfig("pH", "pH");
+    publishDiscoveryConfig("redox", "Redox", "mV");
+    publishDiscoveryConfig("mode", "Mode", undefined, undefined, "select", [
+      "auto",
+      "man",
+      "off",
+    ]);
+    publishDiscoveryConfig("prog", "Program");
 
     const commandTopic = `homeassistant/select/${process.env.DEVICE_ID}/mode/set`;
     client.subscribe(commandTopic);
-    client.on('message', (topic, message) => {
+    client.on("message", (topic, message) => {
       console.log(`Received message on topic ${topic}: ${message.toString()}`);
       if (topic === commandTopic) {
         handleCommand(message.toString());

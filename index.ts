@@ -172,6 +172,25 @@ const mapModeToSelectValue = (mode: string): string => {
   return "unknown";
 };
 
+const extractMetricFromBox = (
+  page: ReturnType<typeof parse>,
+  boxSelector: string,
+  label: string,
+): string => {
+  const box = page.querySelector(boxSelector);
+  if (!box) return "";
+
+  const labels = box
+    .querySelectorAll("p")
+    .map((el) => el.text.trim().replace(":", "").toLowerCase());
+  const values = box
+    .querySelectorAll(".big-number")
+    .map((el) => el.text.trim());
+
+  const index = labels.findIndex((x) => x.includes(label.toLowerCase()));
+  return index >= 0 ? values[index] || "" : "";
+};
+
 const processLoop = async (): Promise<void> => {
   const interval = Number(process.env.PROCESS_LOOP_INTERVAL) || 300000; // Default to 5 minutes
 
@@ -199,12 +218,36 @@ const processLoop = async (): Promise<void> => {
         .find((x) => x.text.includes("PROG"))
         ?.text.replace("PROG: ", "")
         .trim() || "";
+    const oxyCurrent = extractMetricFromBox(
+      deviceStatusPage,
+      ".box.oxy",
+      "oxy curr",
+    );
+    const oxyVoltage = extractMetricFromBox(
+      deviceStatusPage,
+      ".box.oxy",
+      "oxy volt",
+    );
+    const ionCurrent = extractMetricFromBox(
+      deviceStatusPage,
+      ".box.ion",
+      "ion curr",
+    );
+    const ionVoltage = extractMetricFromBox(
+      deviceStatusPage,
+      ".box.ion",
+      "ion volt",
+    );
 
     publishState("temperature", temperature);
     publishState("pH", pH);
     publishState("redox", redox);
     publishState("mode", mode);
     publishState("prog", prog);
+    publishState("oxy_current", oxyCurrent);
+    publishState("oxy_voltage", oxyVoltage);
+    publishState("ion_current", ionCurrent);
+    publishState("ion_voltage", ionVoltage);
   } catch (err) {
     console.error("Error in processLoop:", err);
     publishAlert(`Error: ${(err as Error).message}`);
@@ -230,6 +273,10 @@ const main = (): void => {
     publishDiscoveryConfig("temperature", "Temperature", "°C", "temperature");
     publishDiscoveryConfig("pH", "pH");
     publishDiscoveryConfig("redox", "Redox", "mV");
+    publishDiscoveryConfig("oxy_current", "OXY Current", "A", "current");
+    publishDiscoveryConfig("oxy_voltage", "OXY Voltage", "V", "voltage");
+    publishDiscoveryConfig("ion_current", "ION Current", "A", "current");
+    publishDiscoveryConfig("ion_voltage", "ION Voltage", "V", "voltage");
     publishDiscoveryConfig("mode", "Mode", undefined, undefined, "select", [
       "auto",
       "man",

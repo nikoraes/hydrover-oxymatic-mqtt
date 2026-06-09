@@ -41,11 +41,8 @@ const mqttOptions: IClientOptions = {
 
 const client: MqttClient = mqtt.connect(mqttOptions);
 
-// Enhanced error handling and reconnection logic
 client.on("error", (err) => {
   console.error("MQTT connection error:", err);
-  console.log("Attempting to reconnect...");
-  client.reconnect();
 });
 
 client.on("offline", () => {
@@ -66,6 +63,8 @@ const deviceConfig: DeviceConfig = {
   manufacturer: "Hydrover",
   model: "Oxymatic Controller",
 };
+
+const commandTopic = `homeassistant/select/${process.env.DEVICE_ID}/mode/set`;
 
 const login = async (): Promise<string> => {
   try {
@@ -117,6 +116,11 @@ const publishDiscoveryConfig = (
   component: string = "sensor",
   options?: string[],
 ): void => {
+  if (!client.connected) {
+    console.warn(`Cannot publish discovery config for ${sensor}: client not connected`);
+    return;
+  }
+
   const topic = `homeassistant/${component}/${process.env.DEVICE_ID}/${sensor}/config`;
   const payload: SensorConfig = {
     name,
@@ -137,6 +141,11 @@ const publishDiscoveryConfig = (
 
 // Updated publishState to handle mode separately and send it to the correct topic
 const publishState = (sensor: string, value: string): void => {
+  if (!client.connected) {
+    console.warn(`Cannot publish ${sensor}: client not connected`);
+    return;
+  }
+
   const isMode = sensor === "mode";
   const topic = isMode
     ? `homeassistant/select/${process.env.DEVICE_ID}/${sensor}/state`
@@ -154,6 +163,11 @@ const publishState = (sensor: string, value: string): void => {
 };
 
 const publishAlert = (message: string): void => {
+  if (!client.connected) {
+    console.warn(`Cannot publish alert: client not connected`);
+    return;
+  }
+
   const topic = `homeassistant/text/${process.env.DEVICE_ID}/alert/state`;
   client.publish(topic, message, { retain: true }, (err) => {
     if (err) {
@@ -252,7 +266,11 @@ const processLoop = async (): Promise<void> => {
     console.error("Error in processLoop:", err);
     publishAlert(`Error: ${(err as Error).message}`);
   }
-  setTimeout(processLoop, interval);
+  if (client.connected) {
+    setTimeout(processLoop, interval);
+  } else {
+    console.warn("processLoop paused: client not connected. Will retry on reconnect.");
+  }
 };
 
 const handleCommand = async (command: string): Promise<void> => {
@@ -284,16 +302,16 @@ const main = (): void => {
     ]);
     publishDiscoveryConfig("prog", "Program");
 
-    const commandTopic = `homeassistant/select/${process.env.DEVICE_ID}/mode/set`;
     client.subscribe(commandTopic);
-    client.on("message", (topic, message) => {
-      console.log(`Received message on topic ${topic}: ${message.toString()}`);
-      if (topic === commandTopic) {
-        handleCommand(message.toString());
-      }
-    });
 
     processLoop();
+  });
+
+  client.on("message", (topic, message) => {
+    console.log(`Received message on topic ${topic}: ${message.toString()}`);
+    if (topic === commandTopic) {
+      handleCommand(message.toString());
+    }
   });
 };
 

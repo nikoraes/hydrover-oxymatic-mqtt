@@ -116,6 +116,7 @@ const publishDiscoveryConfig = (
   deviceClass?: string,
   component: string = "sensor",
   options?: string[],
+  numeric?: boolean,
 ): void => {
   if (!client.connected) {
     console.warn(`Cannot publish discovery config for ${sensor}: client not connected`);
@@ -131,7 +132,11 @@ const publishDiscoveryConfig = (
     unit_of_measurement: unit,
     device_class: deviceClass,
     // Numeric sensors need state_class to be chartable/aggregable in HA history.
-    state_class: component === "sensor" && unit ? "measurement" : undefined,
+    // Pass numeric=true for unitless numeric sensors (e.g. pH).
+    state_class:
+      component === "sensor" && (numeric !== undefined ? numeric : unit !== undefined)
+        ? "measurement"
+        : undefined,
     options: component === "select" ? options : undefined,
     command_topic:
       component === "select"
@@ -292,7 +297,8 @@ const main = (): void => {
     console.log("Connected to MQTT broker");
 
     publishDiscoveryConfig("temperature", "Temperature", "°C", "temperature");
-    publishDiscoveryConfig("pH", "pH", "pH", "ph");
+    // pH: HA's `ph` device class is unitless — safe to keep no unit on the value itself.
+    publishDiscoveryConfig("pH", "pH", undefined, "ph", "sensor", undefined, true);
     publishDiscoveryConfig("redox", "Redox", "mV");
     publishDiscoveryConfig("oxy_current", "OXY Current", "A", "current");
     publishDiscoveryConfig("oxy_voltage", "OXY Voltage", "V", "voltage");

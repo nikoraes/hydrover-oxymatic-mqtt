@@ -25,6 +25,7 @@ interface SensorConfig {
   device: DeviceConfig;
   unit_of_measurement?: string;
   device_class?: string;
+  state_class?: string;
   options?: string[];
   command_topic?: string;
 }
@@ -129,6 +130,8 @@ const publishDiscoveryConfig = (
     device: deviceConfig,
     unit_of_measurement: unit,
     device_class: deviceClass,
+    // Numeric sensors need state_class to be chartable/aggregable in HA history.
+    state_class: component === "sensor" && unit ? "measurement" : undefined,
     options: component === "select" ? options : undefined,
     command_topic:
       component === "select"
@@ -289,7 +292,7 @@ const main = (): void => {
     console.log("Connected to MQTT broker");
 
     publishDiscoveryConfig("temperature", "Temperature", "°C", "temperature");
-    publishDiscoveryConfig("pH", "pH");
+    publishDiscoveryConfig("pH", "pH", "pH", "ph");
     publishDiscoveryConfig("redox", "Redox", "mV");
     publishDiscoveryConfig("oxy_current", "OXY Current", "A", "current");
     publishDiscoveryConfig("oxy_voltage", "OXY Voltage", "V", "voltage");
